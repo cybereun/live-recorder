@@ -320,7 +320,7 @@ function ensureActiveSession() {
 }
 
 function addLine(text, at = currentElapsed()) {
-  const cleaned = text.trim();
+  const cleaned = dedupeRepeatedPhrases(text).trim();
   if (!cleaned) return;
   const session = ensureActiveSession();
   const speaker = inferSpeaker(session, at);
@@ -353,6 +353,30 @@ function normalizeText(text) {
   return String(text || "").toLowerCase().replace(/[\s.,!?~…。！？，、"'“”‘’()[\]{}:;\-]/g, "");
 }
 
+function dedupeRepeatedPhrases(text) {
+  let words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return words.join(" ");
+  for (let pass = 0; pass < words.length; pass += 1) {
+    let removed = false;
+    const maxSize = Math.min(12, Math.floor(words.length / 2));
+    for (let size = maxSize; size >= 1 && !removed; size -= 1) {
+      for (let index = 0; index + size * 2 <= words.length; index += 1) {
+        const same = words.slice(index, index + size).every((word, offset) =>
+          normalizeText(word) && normalizeText(word) === normalizeText(words[index + size + offset])
+        );
+        if (!same) continue;
+        const phraseKey = normalizeText(words[index]);
+        if (size === 1 && phraseKey.length < 3) continue;
+        words.splice(index + size, size);
+        removed = true;
+        break;
+      }
+    }
+    if (!removed) break;
+  }
+  return words.join(" ");
+}
+
 function textOverlapTail(previous, next) {
   const a = String(previous || "").trim();
   const b = String(next || "").trim();
@@ -373,10 +397,10 @@ function shouldMergeLine(previous, next) {
 function mergeLineText(previous, next) {
   const a = String(previous || "").trim();
   const b = String(next || "").trim();
-  if (normalizeText(a).includes(normalizeText(b))) return a;
-  if (normalizeText(b).includes(normalizeText(a))) return b;
+  if (normalizeText(a).includes(normalizeText(b))) return dedupeRepeatedPhrases(a);
+  if (normalizeText(b).includes(normalizeText(a))) return dedupeRepeatedPhrases(b);
   const tail = textOverlapTail(a, b);
-  return tail ? a + tail : a + " " + b;
+  return dedupeRepeatedPhrases(tail ? a + tail : a + " " + b);
 }
 
 function addMarker() {
@@ -731,7 +755,7 @@ function mergeStreamingText(previous, next) {
   if (normalizeText(a).includes(normalizeText(b))) return a;
   if (normalizeText(b).includes(normalizeText(a))) return b;
   const tail = textOverlapTail(a, b);
-  return tail ? a + tail : `${a} ${b}`.trim();
+  return dedupeRepeatedPhrases(tail ? a + tail : `${a} ${b}`).trim();
 }
 
 function commitStableText(text, at) {
@@ -749,7 +773,7 @@ function finalizeProvisional(at) {
 }
 
 function handleTranscriptResult(text, at, reason) {
-  const cleaned = String(text || "").trim();
+  const cleaned = dedupeRepeatedPhrases(text).trim();
   if (!cleaned) return;
   const isFinal = reason === "silence" || reason === "stop" || reason === "pause" || reason === "manual";
   if (isFinal) {
@@ -816,6 +840,9 @@ async function startRecording() {
   els.recordButton.classList.add("is-recording");
   els.recordButtonText.textContent = "녹음 정지";
   els.pauseButton.disabled = false;
+  els.pauseButton.classList.remove("is-paused");
+  els.pauseButton.title = "일시정지";
+  els.pauseButton.setAttribute?.("aria-label", "일시정지");
   els.markerButton.disabled = false;
   drawWaveform();
   render();
@@ -880,7 +907,9 @@ async function finishRecording() {
   els.pauseButton.disabled = true;
   els.markerButton.disabled = true;
   els.audioSourceSelect.disabled = false;
-  els.pauseButton.textContent = "Ⅱ";
+  els.pauseButton.classList.remove("is-paused");
+  els.pauseButton.title = "일시정지";
+  els.pauseButton.setAttribute?.("aria-label", "일시정지");
   saveSessions();
   render();
 }
@@ -894,12 +923,16 @@ function togglePause() {
     state.mediaRecorder?.pause();
     flushVadSegment("pause");
       setStatus("일시정지", false);
-    els.pauseButton.textContent = "▶";
+    els.pauseButton.classList.add("is-paused");
+    els.pauseButton.title = "재개";
+    els.pauseButton.setAttribute?.("aria-label", "재개");
   } else {
     state.startedAt = Date.now();
     state.mediaRecorder?.resume();
     setStatus("녹음 중", true);
-    els.pauseButton.textContent = "Ⅱ";
+    els.pauseButton.classList.remove("is-paused");
+    els.pauseButton.title = "일시정지";
+    els.pauseButton.setAttribute?.("aria-label", "일시정지");
   }
 }
 

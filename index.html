@@ -27,14 +27,23 @@
 
       <section class="control-band" aria-label="recording controls">
         <button class="primary-button" id="recordButton" type="button">
-          <span class="record-icon"></span>
+          <span class="record-icon" aria-hidden="true"></span>
           <span id="recordButtonText">녹음 시작</span>
         </button>
-        <button class="icon-button" id="pauseButton" type="button" title="일시정지" disabled>
-          <span>Ⅱ</span>
+        <button class="icon-button pause-button" id="pauseButton" type="button" title="일시정지" aria-label="일시정지" disabled>
+          <svg class="control-glyph pause-glyph" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="6" y="4.5" width="4.5" height="15" rx="2.25"></rect>
+            <rect x="13.5" y="4.5" width="4.5" height="15" rx="2.25"></rect>
+          </svg>
+          <svg class="control-glyph play-glyph" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8.2 5.8a1.15 1.15 0 0 1 1.75-.97l8.4 6.2a1.2 1.2 0 0 1 0 1.94l-8.4 6.2a1.15 1.15 0 0 1-1.75-.97V5.8Z"></path>
+          </svg>
         </button>
-        <button class="icon-button" id="markerButton" type="button" title="마커 추가" disabled>
-          <span>◆</span>
+        <button class="icon-button marker-button" id="markerButton" type="button" title="마커 추가" aria-label="마커 추가" disabled>
+          <svg class="control-glyph marker-glyph" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7.25 4.5A2.25 2.25 0 0 1 9.5 2.25h5a2.25 2.25 0 0 1 2.25 2.25v16.1a.9.9 0 0 1-1.46.7L12 18.24l-3.29 3.31a.9.9 0 0 1-1.46-.7V4.5Z"></path>
+            <path class="marker-notch" d="M9.5 5.5h5"></path>
+          </svg>
         </button>
         <div class="timer" id="timer">00:00</div>
         <select id="audioSourceSelect" class="select" aria-label="audio source">

@@ -1,6 +1,6 @@
 {
   "name": "live-recorder",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "강의 곁의 로컬 녹음과 실시간 노트",
   "author": "cybereun",
   "repository": { "type": "git", "url": "https://github.com/cybereun/live-recorder.git" },
@@ -26,9 +26,10 @@
       { "from": "bin", "to": "engine/bin" },
       { "from": "whisper-cpp/ggml-base.bin", "to": "engine/whisper-cpp/ggml-base.bin" },
       { "from": "build/engine/faster-whisper", "to": "engine/faster-whisper" },
-      { "from": "build/models/small", "to": "engine/models/small" }
+      { "from": "build/models/small", "to": "engine/models/small" },
+      { "from": "assets/live-recorder.ico", "to": "live-recorder.ico" }
     ],
-    "win": { "target": "nsis", "artifactName": "Live-Recorder-Setup-${version}-${arch}.${ext}" },
+    "win": { "icon": "assets/live-recorder.ico", "target": "nsis", "artifactName": "Live-Recorder-Setup-${version}-${arch}.${ext}" },
     "nsis": { "oneClick": true, "perMachine": false, "deleteAppDataOnUninstall": false, "createDesktopShortcut": true, "runAfterFinish": true }
   }
 }

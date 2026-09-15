@@ -10,7 +10,9 @@ let allowClose = false;
 let mode = 'full';
 const origin = 'http://127.0.0.1:5179';
 const token = crypto.randomBytes(32).toString('hex');
+const appIcon = app.isPackaged ? path.join(process.resourcesPath, 'live-recorder.ico') : path.join(__dirname, '..', 'assets', 'live-recorder.ico');
 const lock = app.requestSingleInstanceLock();
+app.setAppUserModelId('com.cybereun.live-recorder');
 if (!lock) app.quit();
 app.on('second-instance', () => { if (win) { win.restore(); win.show(); win.focus(); } });
 
@@ -105,7 +107,7 @@ if (lock) app.whenReady().then(async () => {
       callback({ video: sources[0], audio: 'loopback' });
     } catch { callback({}); }
   });
-  win = new BrowserWindow({ width: 1120, height: 800, minWidth: 720, minHeight: 500, show: false, backgroundColor: '#f3f5f3',
+  win = new BrowserWindow({ width: 1120, height: 800, minWidth: 720, minHeight: 500, show: false, backgroundColor: '#f3f5f3', icon: appIcon,
     title: 'Live Recorder', autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false } });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

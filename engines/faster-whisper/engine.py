@@ -19,7 +19,6 @@ CPU_THREADS = int(os.environ.get("FW_CPU_THREADS", "6"))
 BEAM_SIZE = int(os.environ.get("FW_BEAM_SIZE", "3"))
 
 model = None
-history = []
 MAX_PROMPT_CHARS = 700
 
 
@@ -38,10 +37,7 @@ def load_model():
 
 
 def prompt_text(extra=""):
-    text = " ".join(history[-12:])
-    if extra:
-        text = (text + " " + extra).strip()
-    return text[-MAX_PROMPT_CHARS:]
+    return str(extra or "").strip()[-MAX_PROMPT_CHARS:]
 
 
 def transcribe(req):
@@ -70,7 +66,10 @@ def transcribe(req):
                 "min_silence_duration_ms": 450,
                 "speech_pad_ms": 250,
             },
-            condition_on_previous_text=True,
+            # Each request is a VAD chunk and may contain a carried audio tail.
+            # Feeding prior transcript text back into the decoder can repeat
+            # the same phrase when speech stops at a chunk boundary.
+            condition_on_previous_text=False,
             initial_prompt=prompt_text(initial_prompt),
             without_timestamps=False,
             word_timestamps=False,
@@ -81,9 +80,6 @@ def transcribe(req):
             if text:
                 items.append({"start": seg.start, "end": seg.end, "text": text})
         text = " ".join(item["text"] for item in items).strip()
-        if text:
-            history.append(text)
-            del history[:-30]
         return {
             "id": req.get("id"),
             "text": text,
@@ -110,7 +106,6 @@ def main():
         try:
             req = json.loads(line)
             if req.get("command") == "reset":
-                history.clear()
                 emit({"id": req.get("id"), "ok": True})
             elif req.get("command") == "ping":
                 emit({"id": req.get("id"), "ok": True, "engine": "faster-whisper", "model": MODEL})

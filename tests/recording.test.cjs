@@ -38,6 +38,12 @@ test('new recording cannot start while previous transcription is saving', async 
   await run('startRecording()');
   assert.equal(run('state.isRecording'), false);
 });
+test('transcription removes repeated phrases inside one chunk result', () => {
+  const { run, context } = fixture();
+  context.committed = '';
+  run('addLine = text => { committed = text }; handleTranscriptResult("지금 이야기하고 있는 것을 이야기하고 있는 것을 지금 테스트 중이야", 0, "stop");');
+  assert.equal(context.committed, '지금 이야기하고 있는 것을 지금 테스트 중이야');
+});
 test('side and bottom bounds respect negative monitor coordinates and taskbar work area', () => {
   const area = { x: -1920, y: 0, width: 1920, height: 1040 };
   assert.deepEqual(boundsForMode('side', area), { x: -360, y: 0, width: 360, height: 1040 });
