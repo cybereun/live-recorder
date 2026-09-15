@@ -1,0 +1,15 @@
+node_modules/
+pnpm-lock.yaml
+pnpm-workspace.yaml
+.venv/
+.build-venv/
+build/
+dist/
+data/
+bin/
+whisper-cpp/
+whisper-runtime/
+*.zip
+*.log
+__pycache__/
+engines/Lightning-SimulWhisper/

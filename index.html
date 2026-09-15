@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Recorder</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">LIVE RECORDER <span class="version">v1.1.0</span></p>
+          <h1>듣는 순간, 나의 노트로.</h1>
+        </div>
+        <nav class="view-switch" aria-label="보기 방식">
+          <button type="button" data-mode="full" aria-pressed="true">기본</button>
+          <button type="button" data-mode="side" aria-pressed="false">사이드</button>
+          <button type="button" data-mode="bottom" aria-pressed="false">하단</button>
+        </nav>
+        <button class="text-button" id="pinButton" aria-pressed="false" hidden>항상 위</button>
+        <div class="status-pill" id="statusPill">
+          <span class="status-dot"></span>
+          <span id="statusText">대기</span>
+        </div>
+      </header>
+
+      <section class="control-band" aria-label="recording controls">
+        <button class="primary-button" id="recordButton" type="button">
+          <span class="record-icon"></span>
+          <span id="recordButtonText">녹음 시작</span>
+        </button>
+        <button class="icon-button" id="pauseButton" type="button" title="일시정지" disabled>
+          <span>Ⅱ</span>
+        </button>
+        <button class="icon-button" id="markerButton" type="button" title="마커 추가" disabled>
+          <span>◆</span>
+        </button>
+        <div class="timer" id="timer">00:00</div>
+        <select id="audioSourceSelect" class="select" aria-label="audio source">
+          <option value="microphone">마이크</option>
+          <option value="system">컴퓨터 소리</option>
+        </select>
+        <select id="speakerModeSelect" class="select" aria-label="speaker mode">
+          <option value="1">화자 1명</option>
+          <option value="2">화자 2명</option>
+        </select>
+        <select id="languageSelect" class="select" aria-label="language">
+          <option value="ko-KR">한국어</option>
+          <option value="en-US">English</option>
+          <option value="ja-JP">日本語</option>
+          <option value="zh-CN">中文</option>
+        </select>
+      </section>
+
+      <section class="meter-band" aria-label="audio meter">
+        <canvas id="waveCanvas" width="1200" height="160"></canvas>
+        <div class="meter-footer">
+          <span id="audioLevelText">입력 레벨 0%</span>
+          <span id="speechEngineText">음성 엔진 확인 중</span>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <aside class="session-list" aria-label="sessions">
+          <div class="section-head">
+            <h2>녹음 목록</h2>
+            <button class="text-button" id="newSessionButton" type="button">새 세션</button>
+          </div>
+          <div class="archive-actions" aria-label="archive actions">
+            <button class="text-button" id="archiveButton" type="button">아카이브 저장</button>
+            <button class="text-button" id="exportFolderButton" type="button">폴더 저장</button>
+            <button class="text-button danger-button" id="deleteSessionButton" type="button">삭제</button>
+          </div>
+          <div id="sessions"></div>
+        </aside>
+
+        <section class="transcript-pane" aria-label="transcript">
+          <div class="section-head transcript-head">
+            <div>
+              <h2 id="sessionTitle">새 녹음</h2>
+              <p class="transcript-subtitle">강의에 집중하세요. 들려오는 이야기를 여기에 남겨둘게요.</p>
+            </div>
+            <div class="actions">
+              <button class="text-button" id="copyButton" type="button">복사</button>
+              <button class="text-button" id="exportTextButton" type="button">TXT</button>
+              <button class="text-button" id="downloadAudioButton" type="button" disabled>오디오</button>
+            </div>
+          </div>
+          <div class="live-line" id="interimText">듣기 전</div>
+          <div class="transcript-list" id="transcriptList"></div>
+          <div class="provisional-panel" id="provisionalPanel" hidden>
+            <div class="provisional-label">임시 문장</div>
+            <div class="provisional-text" id="provisionalText"></div>
+          </div>
+        </section>
+      </section>
+      <footer class="app-footer"><span>내 PC에서 받아쓰는 프라이빗 노트</span><span id="updateStatus" role="status"></span><button class="text-button" id="updateButton" hidden>업데이트 확인</button></footer>
+    </main>
+
+    <template id="sessionTemplate">
+      <button class="session-item" type="button">
+        <span class="session-name"></span>
+        <span class="session-meta"></span>
+      </button>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
