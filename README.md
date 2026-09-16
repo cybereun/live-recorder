@@ -39,7 +39,7 @@
 
 [v1.1.0 다운로드](https://github.com/cybereun/live-recorder/releases/tag/v1.1.0)
 
-첫 Windows 설치형 릴리즈입니다.
+첫 Windows 설치형 릴리즈입니다. 설치 없이 실행하는 포터블 파일도 함께 제공합니다.
 
 - Windows x64 NSIS 설치 파일 제공
 - faster-whisper `small/int8` 독립 실행 엔진과 오프라인 모델 포함
@@ -50,6 +50,19 @@
 - GitHub Releases의 `latest.yml`과 blockmap을 이용한 업데이트 준비
 
 설치 파일: [Live-Recorder-Setup-1.1.0-x64.exe](https://github.com/cybereun/live-recorder/releases/download/v1.1.0/Live-Recorder-Setup-1.1.0-x64.exe)
+
+## v1.1.1 릴리즈
+
+중복 전사 문장을 줄이고, 새 아이콘과 포터블 실행 파일을 추가한 업데이트입니다.
+
+- 음성 청크 경계에서 반복 문장이 중복 표시되는 문제 완화
+- 투명 배경 앱 아이콘 및 작업표시줄 아이콘 적용
+- Windows x64 설치형과 포터블 실행 파일 제공
+
+[v1.1.1 다운로드](https://github.com/cybereun/live-recorder/releases/tag/v1.1.1)
+
+- [설치형 다운로드](https://github.com/cybereun/live-recorder/releases/download/v1.1.1/Live-Recorder-Setup-1.1.1-x64.exe)
+- [포터블 다운로드](https://github.com/cybereun/live-recorder/releases/download/v1.1.1/Live-Recorder-Portable-1.1.1-x64.exe)
 
 ## 사용 방법
 
@@ -113,9 +126,10 @@ python -m venv .build-venv
 powershell -ExecutionPolicy Bypass -File scripts/build-engine.ps1
 npm test
 npm run dist
+npm run dist:portable
 ```
 
-출력 파일은 `dist/`에 생성됩니다. Windows 자동 업데이트 대상은 NSIS 설치 파일이며, 같은 릴리즈에 설치 파일, `.blockmap`, `latest.yml`을 올려야 합니다.
+출력 파일은 `dist/`에 생성됩니다. Windows 자동 업데이트 대상은 NSIS 설치 파일이며, 같은 릴리즈에 설치 파일, `.blockmap`, `latest.yml`을 올립니다. 포터블 파일은 `Live-Recorder-Portable-${version}-x64.exe` 이름으로 별도 업로드합니다.
 
 ### 검증 항목
 

@@ -11,7 +11,8 @@
     "start": "electron .",
     "start:web": "node server.js",
     "test": "node --test tests/*.test.cjs",
-    "dist": "electron-builder --win nsis --x64 --publish never"
+    "dist": "electron-builder --win nsis --x64 --publish never",
+    "dist:portable": "electron-builder --win portable --x64 --publish never --config.win.artifactName=Live-Recorder-Portable-${version}-${arch}.${ext}"
   },
   "dependencies": { "electron-updater": "^6.6.2" },
   "devDependencies": { "electron": "^41.0.0", "electron-builder": "^26.0.12" },
