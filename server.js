@@ -4,7 +4,7 @@ const fsp = require("fs/promises");
 const net = require("net");
 const readline = require("readline");
 const path = require("path");
-const { spawn, spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 
 const root = __dirname;
 const engineRoot = process.env.ENGINE_ROOT || root;
@@ -54,6 +54,24 @@ let fasterWhisperStarting = null;
 let fasterWhisperLineReader = null;
 const fasterWhisperPending = new Map();
 let transcriptionQueue = Promise.resolve();
+let shuttingDown = false;
+
+// Stop respawning a crash-looping engine; requests fall back to whisper-server/CLI instead.
+const ENGINE_CRASH_LIMIT = 3;
+const ENGINE_CRASH_WINDOW_MS = 60000;
+const engineCrashes = [];
+function recentEngineCrashes() {
+  const cutoff = Date.now() - ENGINE_CRASH_WINDOW_MS;
+  while (engineCrashes.length && engineCrashes[0] < cutoff) engineCrashes.shift();
+  return engineCrashes.length;
+}
+function recordEngineCrash() {
+  if (!shuttingDown) engineCrashes.push(Date.now());
+}
+
+// Backpressure: refuse new live chunks once transcription falls this far behind.
+const maxPendingChunks = Number(process.env.MAX_PENDING_CHUNKS || 12);
+let pendingChunks = 0;
 
 function firstExisting(candidates) {
   for (const candidate of candidates.filter(Boolean)) {
@@ -92,15 +110,33 @@ function findFfmpegExe() {
   ]);
 }
 
+// Probed once at startup without blocking the event loop; null until the probe finishes.
 let checkedPython;
 function findPythonExe() {
-  if (checkedPython !== undefined) return checkedPython;
-  const candidate = firstExisting([
-    process.env.FASTER_WHISPER_PYTHON,
-    path.join(root, ".venv", "Scripts", "python.exe"),
-  ]);
-  checkedPython = candidate && spawnSync(candidate, ["-c", "import faster_whisper"], { windowsHide: true, timeout: 15000 }).status === 0 ? candidate : null;
-  return checkedPython;
+  return checkedPython === undefined ? null : checkedPython;
+}
+
+function probePythonExe() {
+  return new Promise((resolve) => {
+    const candidate = firstExisting([
+      process.env.FASTER_WHISPER_PYTHON,
+      path.join(root, ".venv", "Scripts", "python.exe"),
+    ]);
+    if (!candidate) {
+      checkedPython = null;
+      resolve();
+      return;
+    }
+    const child = spawn(candidate, ["-c", "import faster_whisper"], { windowsHide: true, stdio: "ignore" });
+    const timer = setTimeout(() => child.kill(), 15000);
+    const finish = (code) => {
+      clearTimeout(timer);
+      checkedPython = code === 0 ? candidate : null;
+      resolve();
+    };
+    child.once("error", () => finish(1));
+    child.once("close", finish);
+  });
 }
 
 function getFasterWhisperStatus() {
@@ -115,6 +151,7 @@ function getFasterWhisperStatus() {
     enginePath,
     model: process.env.FW_MODEL || "small",
     computeType: process.env.FW_COMPUTE_TYPE || "int8",
+    suspended: recentEngineCrashes() >= ENGINE_CRASH_LIMIT,
   };
 }
 
@@ -123,9 +160,10 @@ function getEngineStatus() {
   const whisperServerExe = findWhisperServerExe();
   const ffmpegExe = findFfmpegExe();
   const modelExists = fs.existsSync(modelPath);
+  const fasterWhisper = getFasterWhisperStatus();
   return {
-    ready: Boolean((getFasterWhisperStatus().available || ((whisperServerExe || whisperExe) && modelExists)) && ffmpegExe),
-    mode: getFasterWhisperStatus().available ? "faster-whisper" : (whisperServerExe ? "persistent-server" : "cli-fallback"),
+    ready: Boolean((fasterWhisper.available || ((whisperServerExe || whisperExe) && modelExists)) && ffmpegExe),
+    mode: fasterWhisper.available ? "faster-whisper" : (whisperServerExe ? "persistent-server" : "cli-fallback"),
     whisperExe,
     whisperServerExe,
     whisperServerUrl: "http://127.0.0.1:" + whisperServerPort,
@@ -135,7 +173,7 @@ function getEngineStatus() {
     modelName: path.basename(modelPath),
     modelExists,
     retranscribe: getRetranscribeStatus(),
-    fasterWhisper: getFasterWhisperStatus(),
+    fasterWhisper,
     audioGate,
     missing: {
       whisperExe: !whisperExe,
@@ -437,6 +475,10 @@ async function ensureFasterWhisper() {
   const fw = getFasterWhisperStatus();
   if (!fw.available) return false;
   if (fasterWhisperProcess && !fasterWhisperProcess.killed) return true;
+  if (recentEngineCrashes() >= ENGINE_CRASH_LIMIT) {
+    process.stderr.write("[faster-whisper] suspended after repeated crashes; using fallback engine\n");
+    return false;
+  }
   if (fasterWhisperStarting) return fasterWhisperStarting;
 
   fasterWhisperStarting = new Promise((resolve) => {
@@ -480,8 +522,9 @@ async function ensureFasterWhisper() {
       }
     });
     fasterWhisperProcess.stderr.on("data", (data) => process.stderr.write("[faster-whisper] " + data));
-    fasterWhisperProcess.once("error", () => { finishStart(false); fasterWhisperProcess = null; fasterWhisperStarting = null; });
+    fasterWhisperProcess.once("error", () => { recordEngineCrash(); finishStart(false); fasterWhisperProcess = null; fasterWhisperStarting = null; });
     fasterWhisperProcess.once("exit", (code) => {
+      recordEngineCrash();
       for (const pending of fasterWhisperPending.values()) pending.reject(new Error("faster-whisper exited"));
       fasterWhisperPending.clear();
       fasterWhisperLineReader?.close();
@@ -736,6 +779,12 @@ async function handleApi(req, res, pathname) {
     return true;
   }
   if (req.method === "POST" && pathname === "/api/transcribe-chunk") {
+    if (pendingChunks >= maxPendingChunks) {
+      req.resume();
+      sendJson(res, 429, { error: "받아쓰기가 밀려 이 구간을 건너뜁니다", code: "queue_full" });
+      return true;
+    }
+    pendingChunks += 1;
     try {
       const body = (req.headers["content-type"] || "").startsWith("application/octet-stream")
         ? {
@@ -748,6 +797,8 @@ async function handleApi(req, res, pathname) {
       sendJson(res, 200, await enqueueTranscription(() => transcribeChunk(body)));
     } catch (error) {
       sendJson(res, error.statusCode || 500, { error: error.message || "Transcription failed", details: error.details });
+    } finally {
+      pendingChunks -= 1;
     }
     return true;
   }
@@ -764,7 +815,13 @@ async function handleApi(req, res, pathname) {
   return false;
 }
 
+const allowedHost = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
+
 const server = http.createServer(async (req, res) => {
+  // Reject foreign Host headers (DNS rebinding) before anything else.
+  if (!allowedHost.test(req.headers.host || "")) {
+    res.writeHead(403); res.end("Forbidden"); return;
+  }
   if (process.env.RECORDER_TOKEN && req.headers["x-recorder-token"] !== process.env.RECORDER_TOKEN) {
     res.writeHead(403); res.end("Forbidden"); return;
   }
@@ -800,6 +857,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 function shutdown() {
+  shuttingDown = true;
   if (whisperServerProcess) whisperServerProcess.kill("SIGTERM");
   if (fasterWhisperProcess) fasterWhisperProcess.kill("SIGTERM");
 }
@@ -813,8 +871,8 @@ process.on("exit", shutdown);
 process.on("SIGINT", () => { shutdown(); process.exit(0); });
 process.on("SIGTERM", () => { shutdown(); process.exit(0); });
 
-server.listen(port, "127.0.0.1", () => {
+probePythonExe().then(() => server.listen(port, "127.0.0.1", () => {
   console.log("Live Recorder: http://127.0.0.1:" + port);
   process.parentPort?.postMessage({ ready: true, port: server.address().port });
   console.log("Whisper engine:", getEngineStatus());
-});
+}));

@@ -30,3 +30,37 @@ test('server limits static files, rejects missing desktop token, gates silent au
     assert.equal(binary.reason,'audio_gate');assert.equal(binary.stats.sampleRate,16000);
   } finally { child.kill(); }
 });
+
+function startServer(port, extraEnv = {}) {
+  const child = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(port), RECORDER_TOKEN: 'test-only', FASTER_WHISPER_PYTHON: 'missing-python', ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const ready = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('startup timeout')), 25000);
+    child.stdout.on('data', chunk => { if (chunk.toString().includes('Live Recorder:')) { clearTimeout(timer); resolve(); } });
+    child.once('error', reject);
+  });
+  return { child, ready };
+}
+function rawGet(port, host) {
+  return new Promise((resolve, reject) => {
+    const req = require('node:http').request({ host: '127.0.0.1', port, path: '/', headers: { Host: host, 'X-Recorder-Token': 'test-only' } }, res => { res.resume(); resolve(res.statusCode); });
+    req.on('error', reject); req.end();
+  });
+}
+test('server rejects foreign Host headers (DNS rebinding)', async () => {
+  const { child, ready } = startServer(19581);
+  try {
+    await ready;
+    assert.equal(await rawGet(19581, 'evil.example.com'), 403);
+    assert.equal(await rawGet(19581, '127.0.0.1:19581'), 200);
+    assert.equal(await rawGet(19581, 'localhost:19581'), 200);
+  } finally { child.kill(); }
+});
+test('server applies backpressure when the transcription queue is full', async () => {
+  const { child, ready } = startServer(19582, { MAX_PENDING_CHUNKS: '0' });
+  try {
+    await ready;
+    const response = await fetch('http://127.0.0.1:19582/api/transcribe-chunk', { method: 'POST', headers: { 'X-Recorder-Token': 'test-only', 'Content-Type': 'application/octet-stream' }, body: Buffer.alloc(100) });
+    assert.equal(response.status, 429);
+    assert.equal((await response.json()).code, 'queue_full');
+  } finally { child.kill(); }
+});
