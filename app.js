@@ -103,7 +103,7 @@ function currentElapsed() {
 }
 
 function saveSessions() {
-  storage.save(state.sessions.map((session) => ({ ...session, audioBlob: null })));
+  storage.save(state.sessions.map((session) => ({ ...session, audioBlob: null, liveLines: null })));
   scheduleArchiveSave();
 }
 
@@ -337,6 +337,7 @@ function setupDesktopViews() {
   window.desktop?.onPrepareClose(async () => {
     try {
       if (state.isStarting) throw new Error("엔진 준비가 끝난 뒤 다시 시도해 주세요.");
+      if (state.isRetranscribing) throw new Error("정밀 재전사가 진행 중입니다. 끝난 뒤 다시 종료해 주세요.");
       if (state.isRecording || state.isStopping) await stopRecording();
       await state.transcribeQueue;
       await saveAllToArchive();

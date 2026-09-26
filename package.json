@@ -1,6 +1,6 @@
 {
   "name": "live-recorder",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "강의 곁의 로컬 녹음과 실시간 노트",
   "author": "cybereun",
   "repository": { "type": "git", "url": "https://github.com/cybereun/live-recorder.git" },

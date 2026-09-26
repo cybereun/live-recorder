@@ -88,8 +88,6 @@ function findFfmpegExe() {
     process.env.FFMPEG_EXE,
     path.join(engineRoot, "bin", "ffmpeg.exe"),
     path.join(root, "ffmpeg.exe"),
-    path.join(root, "..", "Alt", "current", "resources", "app.asar.unpacked", "node_modules", "ffmpeg-static", "ffmpeg.exe"),
-    path.join(root, "..", "current", "resources", "app.asar.unpacked", "node_modules", "ffmpeg-static", "ffmpeg.exe"),
     "ffmpeg",
   ]);
 }
@@ -120,18 +118,6 @@ function getFasterWhisperStatus() {
   };
 }
 
-function getLightningStatus() {
-  const repoPath = path.join(root, "engines", "Lightning-SimulWhisper");
-  const available = fs.existsSync(path.join(repoPath, "simulstreaming_whisper_server.py"));
-  const platformSupported = process.platform === "darwin" && process.arch === "arm64";
-  return {
-    available,
-    repoPath,
-    platformSupported,
-    reason: platformSupported ? "ready_for_setup" : "Lightning-SimulWhisper requires Apple Silicon MLX/CoreML; this Windows runtime cannot execute it directly",
-  };
-}
-
 function getEngineStatus() {
   const whisperExe = findWhisperExe();
   const whisperServerExe = findWhisperServerExe();
@@ -148,7 +134,6 @@ function getEngineStatus() {
     modelPath,
     modelName: path.basename(modelPath),
     modelExists,
-    lightning: getLightningStatus(),
     retranscribe: getRetranscribeStatus(),
     fasterWhisper: getFasterWhisperStatus(),
     audioGate,

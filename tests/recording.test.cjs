@@ -106,6 +106,13 @@ test('linesFromSegments keeps markers in time order', () => {
   assert.deepEqual(lines.map((line) => line.text), ['가', '◆ 마커', '나']);
   assert.equal(lines[0].end, 2000);
 });
+test('a full localStorage quota does not break saving sessions', () => {
+  const { run, context } = fixture();
+  context.localStorage = { getItem() { return null; }, setItem() { throw new Error('QuotaExceededError'); } };
+  context.warned = 0;
+  run('console = { warn() { warned += 1; }, error() {}, debug() {} }; state.sessions = [{ id: "s", lines: [], markers: [], liveLines: [{ text: "x" }] }]; storage.save(state.sessions);');
+  assert.equal(context.warned, 1);
+});
 test('side and bottom bounds respect negative monitor coordinates and taskbar work area', () => {
   const area = { x: -1920, y: 0, width: 1920, height: 1040 };
   assert.deepEqual(boundsForMode('side', area), { x: -360, y: 0, width: 360, height: 1040 });

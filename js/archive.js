@@ -10,8 +10,14 @@ const storage = {
       return [];
     }
   },
+  // localStorage is only a small fallback copy (IndexedDB is the archive), so a full
+  // quota must never break recording or transcription.
   save(sessions) {
-    localStorage.setItem("live-recorder:sessions", JSON.stringify(sessions));
+    try {
+      localStorage.setItem("live-recorder:sessions", JSON.stringify(sessions));
+    } catch (error) {
+      console.warn("localStorage backup skipped", error);
+    }
   },
 };
 

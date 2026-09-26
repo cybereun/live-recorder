@@ -4,7 +4,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6?logo=windows&logoColor=white)](https://github.com/cybereun/live-recorder/releases/tag/v1.1.0)
 [![Electron](https://img.shields.io/badge/Electron-41.10.7-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![Transcription](https://img.shields.io/badge/transcription-faster--whisper%20small%20%7C%20int8-8B5CF6)](https://github.com/SYSTRAN/faster-whisper)
-[![Tests](https://img.shields.io/badge/tests-5%20passed-2EA44F)](tests/)
+[![Tests](https://img.shields.io/badge/tests-passing-2EA44F)](tests/)
 [![License](https://img.shields.io/badge/license-proprietary%20%7C%20all%20rights%20reserved-B91C1C)](LICENSE)
 
 강의와 회의의 소리를 내 PC에서 녹음하고, 로컬 음성 엔진으로 받아쓰며, 문장을 노트처럼 쌓아 가는 개인용 Windows 앱입니다. 외부 클라우드 전사 API에 음성을 보내지 않고 로컬 서버와 로컬 모델을 사용합니다.
@@ -138,6 +138,12 @@ npm run dist:portable
 - 엔진 스모크 테스트: faster-whisper 독립 실행 파일의 실제 음성 전사와 UTF-8 JSON 입출력
 
 자세한 결과는 [VERIFICATION.md](VERIFICATION.md)와 [RELEASE-NOTES.md](RELEASE-NOTES.md)에 기록합니다.
+
+## 정밀 재전사와 SRT
+
+녹음이 끝난 세션에서 **정밀 재전사**를 누르면 녹음 전체를 더 큰 whisper.cpp 모델로 다시 받아쓰고, 시작·끝 시간이 있는 문장으로 교체합니다. 실시간 결과는 보관되며 **실시간 결과로 되돌리기**로 복원할 수 있습니다. **SRT** 버튼(과 폴더 저장)은 자막 파일을 만듭니다.
+
+정밀 모델은 설치 파일에 포함되지 않습니다. `ggml-large-v3-turbo-q5_0.bin`(또는 `ggml-large-v3-turbo.bin`, `ggml-medium(-q5_0).bin`)을 앱 데이터 폴더의 `models` 폴더에 넣으면 버튼이 활성화됩니다. 정확한 경로는 비활성화된 버튼에 마우스를 올리면 표시됩니다. 재전사 중에는 앱을 닫지 마세요.
 
 ## 저장 위치와 개인정보
 
