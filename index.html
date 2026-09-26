@@ -93,7 +93,10 @@
             <div class="actions">
               <button class="text-button" id="copyButton" type="button">복사</button>
               <button class="text-button" id="exportTextButton" type="button">TXT</button>
+              <button class="text-button" id="exportSrtButton" type="button">SRT</button>
               <button class="text-button" id="downloadAudioButton" type="button" disabled>오디오</button>
+              <button class="text-button" id="retranscribeButton" type="button" disabled>정밀 재전사</button>
+              <button class="text-button" id="restoreLiveButton" type="button" hidden>실시간 결과로 되돌리기</button>
             </div>
           </div>
           <div class="live-line" id="interimText">듣기 전</div>
@@ -114,6 +117,13 @@
       </button>
     </template>
 
+    <script src="./js/text-utils.js"></script>
+    <script src="./js/audio-utils.js"></script>
+    <script src="./js/archive.js"></script>
+    <script src="./js/recorder.js"></script>
+    <script src="./js/subtitle-utils.js"></script>
+    <script src="./js/retranscribe.js"></script>
+    <script src="./js/export.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

@@ -10,7 +10,9 @@ const root = __dirname;
 const engineRoot = process.env.ENGINE_ROOT || root;
 const port = Number(process.env.PORT || 5177);
 const whisperServerPort = Number(process.env.WHISPER_SERVER_PORT || 5188);
-const tempDir = path.join(process.env.RECORDER_DATA_DIR || path.join(root, "data"), "temp");
+const dataDir = process.env.RECORDER_DATA_DIR || path.join(root, "data");
+const tempDir = path.join(dataDir, "temp");
+const { parseSrt } = require("./subtitles.cjs");
 const smallQ5ModelPath = path.join(root, "whisper-cpp", "ggml-small-q5_1.bin");
 const smallModelPath = path.join(root, "whisper-cpp", "ggml-small.bin");
 const realtimeModelPath = path.join(engineRoot, "whisper-cpp", "ggml-base.bin");
@@ -147,6 +149,7 @@ function getEngineStatus() {
     modelName: path.basename(modelPath),
     modelExists,
     lightning: getLightningStatus(),
+    retranscribe: getRetranscribeStatus(),
     fasterWhisper: getFasterWhisperStatus(),
     audioGate,
     missing: {
@@ -186,6 +189,24 @@ function readJsonBody(req, maxBytes = 80 * 1024 * 1024) {
         reject(new Error("Invalid JSON body"));
       }
     });
+    req.on("error", reject);
+  });
+}
+
+function readRawBody(req, maxBytes = 80 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let total = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        reject(new Error("Request body is too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
 }
@@ -365,8 +386,7 @@ function findWavChunk(buffer, chunkName) {
   return null;
 }
 
-async function analyzeWav(wavPath) {
-  const buffer = await fsp.readFile(wavPath);
+function analyzeWavBuffer(buffer) {
   if (buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WAVE") {
     throw new Error("Converted audio is not a WAV file");
   }
@@ -378,15 +398,16 @@ async function analyzeWav(wavPath) {
   const bitsPerSample = buffer.readUInt16LE(fmt.offset + 14);
   if (bitsPerSample !== 16) throw new Error("Unsupported WAV bit depth: " + bitsPerSample);
 
-  const sampleBytes = 2;
-  const totalSamples = Math.floor(data.size / sampleBytes);
+  const totalSamples = Math.floor(Math.min(data.size, buffer.length - data.offset) / 2);
   const frameCount = Math.floor(totalSamples / Math.max(1, channels));
+  // Copy so the Int16Array view is aligned regardless of the Buffer pool offset.
+  const samples = new Int16Array(buffer.buffer.slice(buffer.byteOffset + data.offset, buffer.byteOffset + data.offset + totalSamples * 2));
   let sumSquares = 0;
   let peak = 0;
   let activeSamples = 0;
 
   for (let index = 0; index < totalSamples; index += 1) {
-    const value = Math.abs(buffer.readInt16LE(data.offset + index * sampleBytes) / 32768);
+    const value = Math.abs(samples[index] / 32768);
     sumSquares += value * value;
     if (value > peak) peak = value;
     if (value >= audioGate.activeSampleThreshold) activeSamples += 1;
@@ -409,6 +430,22 @@ async function analyzeWav(wavPath) {
     activeRatio: Number(activeRatio.toFixed(5)),
     speechLike,
   };
+}
+
+async function analyzeWav(wavPath) {
+  return analyzeWavBuffer(await fsp.readFile(wavPath));
+}
+
+function isPlainWav16kMono(buffer) {
+  try {
+    if (buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WAVE") return false;
+    const fmt = findWavChunk(buffer, "fmt ");
+    if (!fmt || !findWavChunk(buffer, "data")) return false;
+    return buffer.readUInt16LE(fmt.offset) === 1 && buffer.readUInt16LE(fmt.offset + 2) === 1 &&
+      buffer.readUInt32LE(fmt.offset + 4) === 16000 && buffer.readUInt16LE(fmt.offset + 14) === 16;
+  } catch {
+    return false;
+  }
 }
 
 async function ensureFasterWhisper() {
@@ -578,7 +615,9 @@ async function transcribeChunk(body) {
     failure.details = status;
     throw failure;
   }
-  if (!body.audioBase64 || typeof body.audioBase64 !== "string") {
+  const audioBuffer = Buffer.isBuffer(body.audioBuffer) ? body.audioBuffer :
+    (typeof body.audioBase64 === "string" && body.audioBase64 ? Buffer.from(body.audioBase64, "base64") : null);
+  if (!audioBuffer || audioBuffer.length === 0) {
     const error = new Error("Missing audioBase64");
     error.statusCode = 400;
     throw error;
@@ -588,11 +627,19 @@ async function transcribeChunk(body) {
   const id = Date.now() + "-" + Math.random().toString(16).slice(2);
   const inputPath = path.join(tempDir, id + "-input" + extFromMime(body.mimeType));
   const wavPath = path.join(tempDir, id + ".wav");
+  const directWav = isPlainWav16kMono(audioBuffer);
 
   try {
-    await fsp.writeFile(inputPath, Buffer.from(body.audioBase64, "base64"));
-    await runProcess(status.ffmpegExe, ["-y", "-hide_banner", "-loglevel", "error", "-i", inputPath, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wavPath], { timeoutMs: 60000 });
-    const stats = await analyzeWav(wavPath);
+    let stats;
+    if (directWav) {
+      // Already 16 kHz mono PCM16: skip the ffmpeg transcode and analyse in memory.
+      stats = analyzeWavBuffer(audioBuffer);
+      if (stats.speechLike) await fsp.writeFile(wavPath, audioBuffer);
+    } else {
+      await fsp.writeFile(inputPath, audioBuffer);
+      await runProcess(status.ffmpegExe, ["-y", "-hide_banner", "-loglevel", "error", "-i", inputPath, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wavPath], { timeoutMs: 60000 });
+      stats = await analyzeWav(wavPath);
+    }
     const language = normalizeLanguage(body.language);
     const offsetMs = Number(body.offsetMs || 0);
 
@@ -630,6 +677,58 @@ async function transcribeChunk(body) {
   }
 }
 
+// Offline second pass over a finished recording with a larger whisper.cpp model.
+const retranscribeModelNames = ["ggml-large-v3-turbo-q5_0.bin", "ggml-large-v3-turbo.bin", "ggml-medium-q5_0.bin", "ggml-medium.bin"];
+
+function findRetranscribeModel() {
+  const candidates = [process.env.RETRANSCRIBE_MODEL];
+  for (const dir of [path.join(dataDir, "models"), path.join(engineRoot, "whisper-cpp"), path.join(root, "whisper-cpp")]) {
+    for (const name of retranscribeModelNames) candidates.push(path.join(dir, name));
+  }
+  return candidates.find((candidate) => candidate && usableModel(candidate, 300 * 1024 * 1024)) || null;
+}
+
+function getRetranscribeStatus() {
+  const model = findRetranscribeModel();
+  const whisperExe = findWhisperExe();
+  const available = Boolean(model && whisperExe && findFfmpegExe());
+  return {
+    available,
+    model: model ? path.basename(model) : null,
+    reason: available ? null : (!model ? "정밀 모델(ggml-large-v3-turbo-q5_0.bin 등)을 " + path.join(dataDir, "models") + " 폴더에 넣어 주세요" : "whisper-cli 또는 ffmpeg 가 없습니다"),
+  };
+}
+
+async function retranscribeAudio(body) {
+  const failure = (message, statusCode) => Object.assign(new Error(message), { statusCode });
+  const status = getEngineStatus();
+  const model = findRetranscribeModel();
+  if (!model || !status.whisperExe || !status.ffmpegExe) throw failure(getRetranscribeStatus().reason || "정밀 재전사를 사용할 수 없습니다", 503);
+  if (!Buffer.isBuffer(body.audioBuffer) || body.audioBuffer.length === 0) throw failure("Missing audio", 400);
+
+  await fsp.mkdir(tempDir, { recursive: true });
+  const id = "re-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+  const inputPath = path.join(tempDir, id + "-input" + extFromMime(body.mimeType));
+  const wavPath = path.join(tempDir, id + ".wav");
+  const outputBase = path.join(tempDir, id);
+  const srtPath = outputBase + ".srt";
+  const language = normalizeLanguage(body.language);
+  try {
+    await fsp.writeFile(inputPath, body.audioBuffer);
+    await runProcess(status.ffmpegExe, ["-y", "-hide_banner", "-loglevel", "error", "-i", inputPath, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wavPath], { timeoutMs: 30 * 60 * 1000 });
+    const stats = await analyzeWav(wavPath);
+    if (!stats.speechLike) return { segments: [], model: path.basename(model), language, durationMs: stats.durationMs, skipped: true };
+    const args = ["-m", model, "-f", wavPath, "-l", language, "-osrt", "-of", outputBase, "-sns", "-nth", "0.6", "-ng", "-t", String(Math.max(2, Math.min(8, require("os").cpus().length - 1)))];
+    await runProcess(status.whisperExe, args, { timeoutMs: 4 * 60 * 60 * 1000, cwd: path.dirname(status.whisperExe) });
+    const segments = parseSrt(await fsp.readFile(srtPath, "utf8"))
+      .map((segment) => ({ ...segment, text: cleanTranscriptText(segment.text) }))
+      .filter((segment) => segment.text && !commonHallucinations.has(normalizeForCompare(segment.text)));
+    return { segments, model: path.basename(model), language, durationMs: stats.durationMs, skipped: false };
+  } finally {
+    await Promise.allSettled([fsp.unlink(inputPath), fsp.unlink(wavPath), fsp.unlink(srtPath)]);
+  }
+}
+
 function enqueueTranscription(task) {
   const next = transcriptionQueue.then(task, task);
   transcriptionQueue = next.catch(() => undefined);
@@ -653,10 +752,27 @@ async function handleApi(req, res, pathname) {
   }
   if (req.method === "POST" && pathname === "/api/transcribe-chunk") {
     try {
-      const body = await readJsonBody(req);
+      const body = (req.headers["content-type"] || "").startsWith("application/octet-stream")
+        ? {
+          audioBuffer: await readRawBody(req),
+          mimeType: req.headers["x-audio-mime"] || "audio/wav",
+          language: req.headers["x-language"],
+          offsetMs: Number(req.headers["x-offset-ms"] || 0),
+        }
+        : await readJsonBody(req);
       sendJson(res, 200, await enqueueTranscription(() => transcribeChunk(body)));
     } catch (error) {
       sendJson(res, error.statusCode || 500, { error: error.message || "Transcription failed", details: error.details });
+    }
+    return true;
+  }
+  if (req.method === "POST" && pathname === "/api/retranscribe") {
+    try {
+      const audioBuffer = await readRawBody(req, 1024 * 1024 * 1024);
+      const body = { audioBuffer, mimeType: req.headers["x-audio-mime"] || "audio/webm", language: req.headers["x-language"] };
+      sendJson(res, 200, await enqueueTranscription(() => retranscribeAudio(body)));
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, { error: error.message || "Retranscription failed" });
     }
     return true;
   }
@@ -674,7 +790,8 @@ const server = http.createServer(async (req, res) => {
     if (!handled) sendJson(res, 404, { error: "Not found" });
     return;
   }
-  if (!["/index.html", "/app.js", "/styles.css"].includes(pathname)) {
+  const staticFiles = ["/index.html", "/app.js", "/audio-worklet.js", "/styles.css"];
+  if (!staticFiles.includes(pathname) && !/^\/js\/[a-z-]+\.js$/.test(pathname)) {
     res.writeHead(404); res.end("Not found"); return;
   }
   const filePath = path.normalize(path.join(root, pathname));

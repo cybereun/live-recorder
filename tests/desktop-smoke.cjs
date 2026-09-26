@@ -35,16 +35,29 @@ app.whenReady().then(async () => {
     await run('window.desktop.togglePin()');
     await run('startRecording()');
     assert.equal(await run('state.isRecording'),true);
+    assert.equal(await run('state.scriptProcessor.constructor.name'),'AudioWorkletNode','capture uses AudioWorklet, not the ScriptProcessor fallback');
     const identity=await run('state.activeId');
     for(const mode of ['side','bottom','full']) {
       await run(`document.querySelector('[data-mode="${mode}"]').click()`); await delay(250);
       assert.equal(await run('state.activeId'),identity);
       assert.equal(await run('state.mediaRecorder.state'),'recording');
     }
+    const countRecovery = () => run('openArchiveDb().then(db=>new Promise(r=>{const q=db.transaction("recovery").objectStore("recovery").count();q.onsuccess=()=>r(q.result)}))');
+    await delay(2500);
+    assert.ok(await countRecovery() > 0, 'audio chunks persisted while recording');
+    const snapshot = await run('openArchiveDb().then(db=>new Promise(r=>{const q=db.transaction("recovery").objectStore("recovery").getAll();q.onsuccess=()=>{window.__snap=q.result;r(q.result.length)}}))');
     await run('togglePause()'); assert.equal(await run('state.mediaRecorder.state'),'paused');
     await run('togglePause()');
     await run('stopRecording()');
     assert.ok(await run('activeSession().audioBlob.size') > 0);
+    assert.equal(await countRecovery(), 0, 'recovery chunks cleared after clean stop');
+    // Simulate a crash: audio lost from the session, chunks left behind.
+    await run('activeSession().audioBlob=null; openArchiveDb().then(db=>new Promise(r=>{const tx=db.transaction("recovery","readwrite");for(const rec of window.__snap)tx.objectStore("recovery").put(rec);tx.oncomplete=r}))');
+    assert.equal(await run('recoverInterruptedAudio()'), 1);
+    assert.ok(await run('activeSession().audioBlob.size') > 0, 'audio recovered');
+    assert.equal(await countRecovery(), 0, 'recovery chunks cleared after recovery');
+    assert.equal(await run('els.exportSrtButton instanceof HTMLButtonElement && els.retranscribeButton instanceof HTMLButtonElement'),true);
+    assert.equal(await run('els.retranscribeButton.disabled'),!(await run('state.engineStatus.retranscribe.available')),'retranscribe button follows engine availability');
     assert.equal(await run('state.pendingTranscriptions'),0);
     assert.equal(await run('(async()=> (await loadArchiveSessions()).find(s=>s.id===state.activeId).audioBlob.size === activeSession().audioBlob.size)()'),true);
     assert.deepEqual(errors,[]);

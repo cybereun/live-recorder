@@ -22,7 +22,7 @@
     "productName": "Live Recorder",
     "publish": [{ "provider": "github", "owner": "cybereun", "repo": "live-recorder", "releaseType": "release" }],
     "directories": { "output": "dist" },
-    "files": ["desktop/**", "index.html", "app.js", "styles.css", "server.js", "package.json"],
+    "files": ["desktop/**", "index.html", "app.js", "js/**", "audio-worklet.js", "styles.css", "server.js", "subtitles.cjs", "package.json"],
     "extraResources": [
       { "from": "bin", "to": "engine/bin" },
       { "from": "whisper-cpp/ggml-base.bin", "to": "engine/whisper-cpp/ggml-base.bin" },

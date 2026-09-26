@@ -17,10 +17,16 @@ test('server limits static files, rejects missing desktop token, gates silent au
     assert.equal((await fetch(root,{headers})).status,200);
     assert.equal((await fetch(root+'/server.js',{headers})).status,404);
     assert.equal((await fetch(root+'/.venv/pyvenv.cfg',{headers})).status,404);
+    assert.equal((await fetch(root+'/audio-worklet.js',{headers})).status,200);
+    // The transcription checks need a local engine (absent on CI runners).
+    const engine=await (await fetch(root+'/api/engine/status',{headers})).json();
+    if(!engine.ready) return;
     const wav=Buffer.alloc(44+32000);
     wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(16000,24);wav.writeUInt32LE(32000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(32000,40);
     const response=await fetch(root+'/api/transcribe-chunk',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({audioBase64:wav.toString('base64'),mimeType:'audio/wav'})});
     const result=await response.json();
     assert.equal(result.reason,'audio_gate');assert.equal(result.text,'');
+    const binary=await (await fetch(root+'/api/transcribe-chunk',{method:'POST',headers:{...headers,'Content-Type':'application/octet-stream','X-Audio-Mime':'audio/wav','X-Language':'ko','X-Offset-Ms':'0'},body:wav})).json();
+    assert.equal(binary.reason,'audio_gate');assert.equal(binary.stats.sampleRate,16000);
   } finally { child.kill(); }
 });
